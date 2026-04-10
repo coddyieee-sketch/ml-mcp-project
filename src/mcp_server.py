@@ -1,8 +1,24 @@
 """
 MCP Server for AI/ML Model Operations
+======================================
 
 This server exposes ML model inference and training capabilities
-via the Model Context Protocol (MCP).
+via the Model Context Protocol (MCP), enabling standardized access
+to machine learning models from any MCP-compatible client.
+
+Features:
+---------
+- Model Inference: Run predictions on trained models
+- Model Training: Train new models with custom datasets
+- Model Management: List and manage available models
+- Standardized Interface: MCP protocol for interoperability
+
+Usage:
+------
+    python src/mcp_server.py
+
+The server runs on stdio and communicates via MCP protocol.
+Clients can discover available tools and call them with structured arguments.
 """
 
 import asyncio
@@ -16,11 +32,24 @@ server = Server("ml-model-server")
 
 
 class PredictionRequest(BaseModel):
+    """Request model for running inference on a trained model.
+    
+    Attributes:
+        model_name: Name/identifier of the model to use for prediction
+        input_data: Dictionary containing input features/data for the model
+    """
     model_name: str
     input_data: dict
 
 
 class TrainingRequest(BaseModel):
+    """Request model for training a new ML model.
+    
+    Attributes:
+        model_name: Name to assign to the newly trained model
+        training_data_path: Filesystem path to the training dataset
+        epochs: Number of training iterations (default: 10)
+    """
     model_name: str
     training_data_path: str
     epochs: int = 10
@@ -28,7 +57,13 @@ class TrainingRequest(BaseModel):
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """List available ML tools."""
+    """
+    List all available ML tools exposed by this MCP server.
+    
+    Returns:
+        List of Tool objects with names, descriptions, and input schemas.
+        Clients use this to discover what operations are available.
+    """
     return [
         Tool(
             name="predict",
@@ -84,49 +119,105 @@ async def list_tools() -> list[Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    """Handle tool calls."""
+    """
+    Execute a requested ML tool operation.
+    
+    Args:
+        name: Name of the tool to call (predict, train, or list_models)
+        arguments: Dictionary of arguments for the tool
+    
+    Returns:
+        List of TextContent objects containing the operation results
+    
+    Raises:
+        ValueError: If an unknown tool name is provided
+    
+    Tools:
+    ------
+    - predict: Run inference on a trained model
+    - train: Train a new model with provided data
+    - list_models: Enumerate all available trained models
+    """
     
     if name == "predict":
+        # Run inference on a trained model
         model_name = arguments.get("model_name")
         input_data = arguments.get("input_data")
         
         # TODO: Implement actual prediction logic
-        # For now, return a placeholder response
+        # Load model from models/ directory and run inference
+        # Example:
+        #   model = load_model(f"models/{model_name}")
+        #   prediction = model.predict(input_data)
+        
         result = {
             "model": model_name,
-            "prediction": "placeholder",
-            "confidence": 0.95
+            "prediction": "placeholder - implement model loading",
+            "confidence": 0.95,
+            "description": "Run model inference and return predictions with confidence scores"
         }
         
         return [TextContent(type="text", text=str(result))]
     
     elif name == "train":
+        # Train a new ML model
         model_name = arguments.get("model_name")
         training_data_path = arguments.get("training_data_path")
         epochs = arguments.get("epochs", 10)
         
         # TODO: Implement actual training logic
+        # Load data, initialize model, train, and save to models/ directory
+        # Example:
+        #   data = load_data(training_data_path)
+        #   model = create_model()
+        #   model.fit(data, epochs=epochs)
+        #   model.save(f"models/{model_name}")
+        
         result = {
             "status": "training_started",
             "model": model_name,
             "epochs": epochs,
-            "data_path": training_data_path
+            "data_path": training_data_path,
+            "description": "Train model with specified epochs and save to models/ directory"
         }
         
         return [TextContent(type="text", text=str(result))]
     
     elif name == "list_models":
-        # TODO: Scan models directory for available models
+        # List all available trained models
+        # TODO: Scan models/ directory for .pth, .h5, .pkl, .onnx files
+        import os
+        models_dir = "models"
         models = []
         
-        return [TextContent(type="text", text=str({"models": models}))]
+        if os.path.exists(models_dir):
+            for f in os.listdir(models_dir):
+                if f.endswith(('.pth', '.h5', '.pkl', '.onnx', '.pt')):
+                    models.append({
+                        "name": f,
+                        "path": os.path.join(models_dir, f),
+                        "type": f.split('.')[-1]
+                    })
+        
+        result = {
+            "models": models,
+            "count": len(models),
+            "description": "Available trained models ready for inference"
+        }
+        
+        return [TextContent(type="text", text=str(result))]
     
     else:
         raise ValueError(f"Unknown tool: {name}")
 
 
 async def main():
-    """Run the MCP server."""
+    """
+    Main entry point - initialize and run the MCP server.
+    
+    Sets up stdio communication channels and starts the server loop.
+    The server will process incoming MCP requests until terminated.
+    """
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream,
